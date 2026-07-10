@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart AI Coach</title>
+    <style>
+        :root { --bg-main: #121212; --bg-card: #1e1e1e; --accent: #00e676; --text-main: #ffffff; --text-muted: #aaaaaa; --border: #333333; --warning: #ff5252; --secondary-btn: #3a3a3a; --info: #2196f3; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background-color: var(--bg-main); color: var(--text-main); line-height: 1.6; padding: 20px; }
+        #app-container { max-width: 600px; margin: 0 auto; padding-bottom: 80px; }
+        header { text-align: center; margin-bottom: 20px; }
+        header h1 { color: var(--accent); letter-spacing: 1px; }
+        .control-panel { background-color: var(--bg-card); padding: 20px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 20px; }
+        .input-group { margin-bottom: 15px; }
+        .input-group label { display: block; margin-bottom: 5px; color: var(--text-muted); font-size: 0.9em; }
+        input[type="date"], select, input[type="text"], input[type="number"] { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background-color: var(--bg-main); color: var(--text-main); font-size: 1em; }
+        .btn { display: block; width: 100%; padding: 15px; border: none; border-radius: 8px; background-color: var(--accent); color: #000; font-weight: bold; font-size: 1.1em; cursor: pointer; margin-top: 10px; transition: 0.2s; }
+        .btn-secondary { background-color: var(--secondary-btn); color: var(--text-main); }
+        .btn:disabled { background-color: var(--border); color: var(--text-muted); cursor: not-allowed; }
+        
+        /* --- Phase Headers --- */
+        .phase-header { color: var(--text-main); font-size: 1.25em; text-align: center; margin: 35px 0 15px 0; border-bottom: 2px solid var(--border); padding-bottom: 10px; font-weight: bold; }
+        
+        /* --- Exercise Cards --- */
+        .exercise-card { background-color: var(--bg-card); padding: 20px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 20px; }
+        .exercise-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 10px;}
+        
+        /* --- Dropdown Toggle UI --- */
+        .exercise-title-wrapper { display: flex; align-items: center; cursor: pointer; user-select: none; flex-shrink: 0; max-width: 60%; }
+        .exercise-title { font-size: 1.1em; font-weight: bold; color: var(--accent); }
+        .toggle-icon { margin-left: 8px; font-size: 0.8em; transition: transform 0.3s ease; color: var(--accent); }
+        .toggle-icon.open { transform: rotate(180deg); }
+        .cues-container { display: none; margin-top: 10px; margin-bottom: 15px; padding: 15px; background: #121212; border-radius: 8px; border-left: 3px solid var(--accent); }
+        .cues-container.open { display: block; }
+        .cues { font-size: 0.85em; color: var(--text-muted); font-style: italic; white-space: pre-line; }
+        
+        /* --- Equipment Tag (Updated for Mobile Wrapping) --- */
+        .exercise-tag { 
+            display: inline-block; /* Forces it to remain a single solid box even when wrapping */
+            font-size: 0.75em; 
+            background: #333; 
+            padding: 6px 8px; 
+            border-radius: 6px; 
+            color: #ddd; 
+            margin-left: 10px; 
+            text-align: right;
+            line-height: 1.3;
+        }
+        
+        /* --- Updated Targets & Remove Button --- */
+        .targets { display: flex; justify-content: space-between; align-items: center; font-size: 0.85em; margin-bottom: 15px; background: #000; padding: 10px; border-radius: 8px;}
+        .remove-btn { background: none; border: none; color: var(--warning); cursor: pointer; font-size: 1em; font-weight: bold; transition: opacity 0.2s; }
+        .remove-btn:hover { opacity: 0.7; }
+        
+        .recommendation { font-size: 0.85em; color: var(--info); margin-bottom: 15px; text-align: center; font-weight: bold; }
+        .set-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 15px; }
+        .set-grid input { text-align: center; padding: 10px; font-size: 1.1em; }
+        #status-message { text-align: center; margin-top: 15px; font-weight: bold; }
+        hr.divider { border: 0; border-top: 1px solid var(--border); margin: 25px 0; }
+    </style>
+</head>
+<body>
+
+<div id="app-container">
+    <header><h1>Smart AI Coach</h1><p style="color: var(--text-muted);">Adaptive Tracker</p></header>
+
+    <div class="control-panel">
+        <div class="input-group">
+            <label>Date</label>
+            <input type="date" id="workout-date">
+        </div>
+        <div class="input-group">
+            <label>Today's Action (Auto-Selected based on schedule)</label>
+            <select id="workout-type">
+                <option value="Workout A">Workout A</option>
+                <option value="Workout B">Workout B</option>
+                <option value="Workout C">Workout C</option>
+                <option value="Workout D">Workout D</option>
+                <option value="Cardio">Cardio</option>
+                <option value="Active Recovery">Active Recovery</option>
+                <option value="Custom">Custom / Builder</option>
+            </select>
+        </div>
+        <button id="fetch-btn" class="btn">Sync Database & History</button>
+        <p id="status-message"></p>
+    </div>
+
+    <div id="workout-view" style="display: none;">
+        <div id="exercise-list"></div>
+        
+        <div class="control-panel" id="add-exercise-panel" style="display:none; margin-top: 30px;">
+            <h3 style="margin-bottom: 15px; font-size: 1.1em; color: var(--accent);">From Database</h3>
+            <div class="input-group"><select id="category-select"><option value="">Select Category...</option></select></div>
+            <div class="input-group"><select id="exercise-select" disabled><option value="">Select Exercise...</option></select></div>
+            <button id="add-card-btn" class="btn btn-secondary" disabled>+ Add to Workout</button>
+            <hr class="divider">
+            <h3 style="margin-bottom: 15px; font-size: 1.1em; color: var(--accent);">Unplanned Exercise</h3>
+            <div class="input-group"><input type="text" id="manual-exercise-name" placeholder="e.g., 5km Run, Extra Dips"></div>
+            <button id="add-manual-btn" class="btn btn-secondary" disabled>+ Add Custom Exercise</button>
+        </div>
+
+        <button id="save-workout-btn" class="btn" style="margin-top: 30px;">💾 Log Workout</button>
+        <p id="save-status" style="text-align: center; margin-top: 10px;"></p>
+    </div>
+</div>
+
+<script>
+    const API_URL = "https://script.google.com/macros/s/AKfycbyHjSGTwVLwMg78i_Teee7CEnlTrpnNOq1EM1cBFkt-jwesbjUNL0wz1-9cjGLU8YfEew/exec";
+    
+    let masterDatabase = [];
+    let workoutLogs = [];
+
+    // --- AI SCHEDULING ENGINE ---
+    function getWorkoutForDate(dateString) {
+        const [year, month, day] = dateString.split('-');
+        const selectedDate = new Date(year, month - 1, day);
+        const dayOfWeek = selectedDate.getDay(); 
+
+        switch(dayOfWeek) {
+            case 1: return 'Workout A'; 
+            case 2: return 'Workout B'; 
+            case 3: return 'Active Recovery'; 
+            case 4: return 'Workout C'; 
+            case 5: return 'Workout D'; 
+            case 6: return 'Cardio'; 
+            case 0: 
+                const prevSaturday = new Date(selectedDate);
+                prevSaturday.setDate(selectedDate.getDate() - 1);
+                const prevSatString = prevSaturday.getFullYear() + '-' + 
+                                      String(prevSaturday.getMonth() + 1).padStart(2, '0') + '-' + 
+                                      String(prevSaturday.getDate()).padStart(2, '0');
+
+                let cardioLoggedOnSaturday = false;
+                
+                for (let i = 0; i < workoutLogs.length; i++) {
+                    if (!workoutLogs[i].Date) continue;
+                    const logDateObj = new Date(workoutLogs[i].Date);
+                    if (isNaN(logDateObj.getTime())) continue;
+
+                    const logDateString = logDateObj.getFullYear() + '-' + 
+                                          String(logDateObj.getMonth() + 1).padStart(2, '0') + '-' + 
+                                          String(logDateObj.getDate()).padStart(2, '0');
+
+                    if (logDateString === prevSatString && workoutLogs[i]['Workout Type'] === 'Cardio') {
+                        cardioLoggedOnSaturday = true;
+                        break; 
+                    }
+                }
+                return cardioLoggedOnSaturday ? 'Active Recovery' : 'Cardio';
+            default: return 'Cardio';
+        }
+    }
+
+    // --- APP STARTUP LOGIC ---
+    const dateInput = document.getElementById('workout-date');
+    const today = new Date();
+    const todayString = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+    dateInput.value = todayString;
+    
+    document.getElementById('workout-type').value = getWorkoutForDate(todayString);
+
+    document.getElementById('workout-date').addEventListener('change', function(e) {
+        const selectedDate = e.target.value;
+        if (selectedDate) {
+            const scheduledWorkout = getWorkoutForDate(selectedDate);
+            const workoutDropdown = document.getElementById('workout-type');
+            workoutDropdown.value = scheduledWorkout;
+            if (masterDatabase.length > 0) {
+                workoutDropdown.dispatchEvent(new Event('change'));
+            }
+        }
+    });
+
+    // --- DATABASE SYNC LOGIC ---
+    async function syncDatabase() {
+        const statusEl = document.getElementById('status-message');
+        const fetchBtn = document.getElementById('fetch-btn');
+        
+        statusEl.style.color = "var(--text-muted)";
+        statusEl.innerText = "Syncing AI Brain...";
+        fetchBtn.disabled = true; 
+        
+        try {
+            const response = await fetch(API_URL);
+            const data = await response.json();
+            masterDatabase = data.master;
+            workoutLogs = data.logs;
+            
+            statusEl.style.color = "var(--accent)";
+            statusEl.innerText = `Synced! Loaded history.`;
+            
+            document.getElementById('workout-view').style.display = 'block';
+            populateCategoryDropdown();
+            
+            const currentDate = document.getElementById('workout-date').value;
+            const workoutDropdown = document.getElementById('workout-type');
+            workoutDropdown.value = getWorkoutForDate(currentDate);
+            triggerWorkoutLoad(); 
+        } catch (error) {
+            statusEl.style.color = "var(--warning)";
+            statusEl.innerText = "Sync failed. Check connection.";
+        } finally {
+            fetchBtn.disabled = false;
+        }
+    }
+
+    document.getElementById('fetch-btn').addEventListener('click', syncDatabase);
+    window.addEventListener('DOMContentLoaded', syncDatabase);
+    document.getElementById('workout-type').addEventListener('change', triggerWorkoutLoad);
+
+    // --- TOGGLE CUES DROPDOWN ---
+    function toggleCues(cuesId, iconId) {
+        const cuesEl = document.getElementById(cuesId);
+        const iconEl = document.getElementById(iconId);
+        if (cuesEl.classList.contains('open')) {
+            cuesEl.classList.remove('open');
+            iconEl.classList.remove('open');
+        } else {
+            cuesEl.classList.add('open');
+            iconEl.classList.add('open');
+        }
+    }
+
+    // --- AI PROGRESSION & RENDERING ENGINE ---
+    function triggerWorkoutLoad() {
+        const selectedType = document.getElementById('workout-type').value;
+        const builderPanel = document.getElementById('add-exercise-panel');
+        const exerciseList = document.getElementById('exercise-list');
+        exerciseList.innerHTML = '';
+
+        if (selectedType === 'Custom') {
+            builderPanel.style.display = 'block';
+        } else {
+            builderPanel.style.display = 'none';
+            
+            const workoutExercises = masterDatabase.filter(ex => ex['Workout Day'] && ex['Workout Day'].includes(selectedType));
+            
+            const warmups = workoutExercises.filter(ex => ex.Category && ex.Category.toLowerCase().includes('warm-up'));
+            const cooldowns = workoutExercises.filter(ex => ex.Category && (ex.Category.toLowerCase().includes('cool-down') || ex.Category.toLowerCase().includes('cooldown')));
+            const mainExercises = workoutExercises.filter(ex => !warmups.includes(ex) && !cooldowns.includes(ex));
+
+            // 1. Render WARM-UPS
+            if (warmups.length > 0) {
+                exerciseList.insertAdjacentHTML('beforeend', '<div class="phase-header">🔥 Preparation Phase</div>');
+                warmups.forEach(ex => {
+                    createTrackingCard(ex['Exercise Name'], ex.Category, ex.Equipment, ex['Instructions / Cues'], ex['Target Sets'], ex['Min Target'], ex['Max Target'] + ' ' + (ex['Metric Type']||''), "", false);
+                });
+            }
+
+            // 2. Render MAIN EXERCISES
+            if (mainExercises.length > 0) {
+                exerciseList.insertAdjacentHTML('beforeend', '<div class="phase-header">⚡ Main Routine</div>');
+                mainExercises.forEach(baseEx => {
+                    let exerciseToRender = baseEx;
+                    let recText = "First time doing this! Establish a baseline.";
+
+                    let lastLog = null;
+                    for (let i = workoutLogs.length - 1; i >= 0; i--) {
+                        if (workoutLogs[i].Category === baseEx.Category) {
+                            lastLog = workoutLogs[i];
+                            break;
+                        }
+                    }
+
+                    if (lastLog) {
+                        const lastSets = [lastLog['Set 1'], lastLog['Set 2'], lastLog['Set 3'], lastLog['Set 4'], lastLog['Set 5']].map(Number).filter(n => !isNaN(n) && n > 0);
+                        const maxRepsAchieved = lastSets.length > 0 ? Math.max(...lastSets) : 0;
+                        
+                        if (maxRepsAchieved >= baseEx['Max Target']) {
+                            const progressionEx = masterDatabase.find(e => e['Exercise Name'] === baseEx['Progression (Harder)']);
+                            if (progressionEx) {
+                                exerciseToRender = progressionEx;
+                                recText = `🔥 Leveled Up! Try to hit the Min Target.`;
+                            }
+                        } else if (maxRepsAchieved > 0 && maxRepsAchieved < baseEx['Min Target']) {
+                            const regressionEx = masterDatabase.find(e => e['Exercise Name'] === baseEx['Regression (Easier)']);
+                            if (regressionEx) {
+                                exerciseToRender = regressionEx;
+                                recText = `📉 Regressed to build volume. Hit Max Target to go back up!`;
+                            }
+                        } else if (maxRepsAchieved > 0) {
+                            const increment = Number(baseEx['Progression Amount']) || 1; 
+                            const nextTarget = maxRepsAchieved + increment;
+                            const metric = baseEx['Metric Type'] ? baseEx['Metric Type'].toLowerCase() : 'reps';
+                            recText = `📈 Recommended: Try for ${nextTarget} ${metric} on your first set!`;
+                        }
+                    }
+
+                    createTrackingCard(exerciseToRender['Exercise Name'], exerciseToRender.Category, exerciseToRender.Equipment, exerciseToRender['Instructions / Cues'], exerciseToRender['Target Sets'], exerciseToRender['Min Target'], exerciseToRender['Max Target'] + ' ' + (exerciseToRender['Metric Type']||''), recText, true);
+                });
+            }
+
+            // 3. Render COOL-DOWNS
+            if (cooldowns.length > 0) {
+                exerciseList.insertAdjacentHTML('beforeend', '<div class="phase-header">❄️ Restoration Phase</div>');
+                cooldowns.forEach(ex => {
+                    createTrackingCard(ex['Exercise Name'], ex.Category, ex.Equipment, ex['Instructions / Cues'], ex['Target Sets'], ex['Min Target'], ex['Max Target'] + ' ' + (ex['Metric Type']||''), "", false);
+                });
+            }
+        }
+    }
+
+    // --- STANDARD BUILDER LOGIC ---
+    const catSelect = document.getElementById('category-select');
+    const exSelect = document.getElementById('exercise-select');
+    const addCardBtn = document.getElementById('add-card-btn');
+
+    function populateCategoryDropdown() {
+        const categories = [...new Set(masterDatabase.map(ex => ex.Category))].filter(Boolean);
+        catSelect.innerHTML = '<option value="">Select Category...</option>';
+        categories.forEach(cat => catSelect.innerHTML += `<option value="${cat}">${cat}</option>`);
+    }
+
+    catSelect.addEventListener('change', (e) => {
+        const selectedCat = e.target.value;
+        exSelect.innerHTML = '<option value="">Select Exercise...</option>';
+        if (!selectedCat) { exSelect.disabled = true; return; }
+        const filteredEx = masterDatabase.filter(ex => ex.Category === selectedCat);
+        filteredEx.forEach(ex => exSelect.innerHTML += `<option value="${ex['Exercise Name']}">${ex['Exercise Name']}</option>`);
+        exSelect.disabled = false;
+    });
+
+    exSelect.addEventListener('change', (e) => addCardBtn.disabled = !e.target.value);
+
+    addCardBtn.addEventListener('click', () => {
+        const exData = masterDatabase.find(ex => ex['Exercise Name'] === exSelect.value);
+        if (exData) createTrackingCard(exData['Exercise Name'], exData.Category, exData.Equipment, exData['Instructions / Cues'], exData['Target Sets'], exData['Min Target'], exData['Max Target'] + ' ' + exData['Metric Type'], "Manually Added");
+        catSelect.value = ''; exSelect.innerHTML = '<option value="">Select Exercise...</option>';
+        exSelect.disabled = true; addCardBtn.disabled = true;
+    });
+
+    const manualInput = document.getElementById('manual-exercise-name');
+    const manualBtn = document.getElementById('add-manual-btn');
+    manualInput.addEventListener('input', (e) => manualBtn.disabled = e.target.value.trim() === '');
+    manualBtn.addEventListener('click', () => {
+        const customName = manualInput.value.trim();
+        if (customName) createTrackingCard(customName, "Unplanned", "Custom", "Log your custom stats below.", "Custom", "N/A", "N/A", "Unplanned Activity");
+        manualInput.value = ''; manualBtn.disabled = true;
+    });
+
+    function createTrackingCard(name, category, equipment, cues, sets, min, max, recText, isLoggingRequired = true) {
+        const cardId = 'card_' + Date.now() + Math.floor(Math.random() * 1000);
+        const cuesId = 'cues_' + cardId;
+        const iconId = 'icon_' + cardId;
+        
+        const loggingHTML = isLoggingRequired ? `
+            <div class="set-grid">
+                ${Array.from({length: 10}, (_, i) => `<input type="number" class="rep-input" placeholder="S${i+1}">`).join('')}
+            </div>
+            <input type="text" class="notes-input" placeholder="Notes (e.g., Felt heavy, Strike 1)">
+        ` : ``;
+
+        const recHTML = recText ? `<div class="recommendation">${recText}</div>` : ``;
+        const cardClass = isLoggingRequired ? "exercise-card" : "exercise-card no-log";
+
+        const cardHTML = `
+            <div class="${cardClass}" id="${cardId}" data-name="${name}" data-cat="${category}">
+                <div class="exercise-header">
+                    <div class="exercise-title-wrapper" onclick="toggleCues('${cuesId}', '${iconId}')">
+                        <div class="exercise-title">${name}</div>
+                        <div class="toggle-icon" id="${iconId}">▼</div>
+                    </div>
+                    <div style="text-align: right;"><span class="exercise-tag">🎒 ${equipment || 'None'}</span></div>
+                </div>
+                
+                <div class="targets">
+                    <span>🎯 Sets: ${sets}</span>
+                    <span>📉 Min: ${min}</span>
+                    <span>📈 Max: ${max}</span>
+                    <button class="remove-btn" onclick="document.getElementById('${cardId}').remove()" title="Remove Exercise">✖</button>
+                </div>
+                
+                <div class="cues-container" id="${cuesId}">
+                    <div class="cues">${cues || 'No instructions provided.'}</div>
+                </div>
+                
+                ${recHTML}
+                ${loggingHTML}
+            </div>
+        `;
+        document.getElementById('exercise-list').insertAdjacentHTML('beforeend', cardHTML);
+    }
+
+    // --- SAVE LOGIC ---
+    document.getElementById('save-workout-btn').addEventListener('click', async () => {
+        const saveStatus = document.getElementById('save-status');
+        const cards = document.querySelectorAll('.exercise-card');
+        if (cards.length === 0) { saveStatus.style.color = "var(--warning)"; saveStatus.innerText = "No exercises added to log!"; return; }
+
+        saveStatus.style.color = "var(--text-muted)"; saveStatus.innerText = "Saving to Google Sheets...";
+        const date = document.getElementById('workout-date').value;
+        const workoutType = document.getElementById('workout-type').value;
+        const logs = [];
+
+        cards.forEach(card => {
+            if (!card.classList.contains('no-log')) {
+                const inputs = card.querySelectorAll('.rep-input');
+                const setsArray = Array.from(inputs).map(input => input.value);
+                const notes = card.querySelector('.notes-input').value;
+                logs.push({ date: date, workoutType: workoutType, category: card.dataset.cat, exerciseName: card.dataset.name, sets: setsArray, notes: notes });
+            }
+        });
+
+        try {
+            for (let log of logs) { await fetch(API_URL, { method: 'POST', body: JSON.stringify(log) }); }
+            saveStatus.style.color = "var(--accent)"; saveStatus.innerText = "✅ Workout successfully logged!";
+            setTimeout(() => { document.getElementById('exercise-list').innerHTML = ''; saveStatus.innerText = ''; document.getElementById('workout-type').value = 'Custom'; triggerWorkoutLoad(); }, 2500);
+        } catch (error) { saveStatus.style.color = "var(--warning)"; saveStatus.innerText = "Error saving workout. Try again."; }
+    });
+</script>
+</body>
+</html>

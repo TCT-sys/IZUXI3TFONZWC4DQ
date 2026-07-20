@@ -223,6 +223,78 @@
         }
     }
 
+    // Helper: find recommended exercise by following progression chain
+function getRecommendedExerciseFrom(baseEx) {
+    if (!baseEx) return baseEx;
+    // build progression chain (baseEx, next, next, ...)
+    const chain = [];
+    let cur = baseEx;
+    while (cur && cur['Exercise Name']) {
+        chain.push(cur);
+        const nextName = (cur['Progression (Harder)'] || '').toString().trim();
+        if (!nextName) break;
+        const nextEx = masterDatabase.find(e => (e['Exercise Name']||'').toString().trim() === nextName);
+        if (!nextEx) break;
+        // avoid infinite loops
+        if (chain.some(x => (x['Exercise Name']||'').toString().trim() === (nextEx['Exercise Name']||'').toString().trim())) break;
+        cur = nextEx;
+    }
+
+    // find the most recent log that matches any exercise in the chain (match by Exercise Name)
+    let lastLog = null;
+    let lastLogExerciseName = '';
+    for (let i = workoutLogs.length - 1; i >= 0; i--) {
+        const logName = (workoutLogs[i]['Exercise Name'] || workoutLogs[i]['exerciseName'] || '').toString().trim();
+        if (!logName) continue;
+        const match = chain.find(ex => (ex['Exercise Name']||'').toString().trim() === logName);
+        if (match) {
+            lastLog = workoutLogs[i];
+            lastLogExerciseName = logName;
+            break;
+        }
+    }
+
+    // If there's no log in the chain, return the base exercise (fresh start)
+    if (!lastLog) return baseEx;
+
+    // compute max reps achieved from Set 1..Set 10 (tolerant parsing)
+    const setKeys = ['Set 1','Set 2','Set 3','Set 4','Set 5','Set 6','Set 7','Set 8','Set 9','Set 10'];
+    const reps = [];
+    for (const k of setKeys) {
+        const v = lastLog[k] !== undefined ? lastLog[k] : lastLog[k.toLowerCase()] !== undefined ? lastLog[k.toLowerCase()] : null;
+        const n = Number(v);
+        if (!isNaN(n) && n > 0) reps.push(n);
+    }
+    const maxRepsAchieved = reps.length > 0 ? Math.max(...reps) : 0;
+
+    // find which exercise in chain was logged
+    let loggedEx = chain.find(ex => (ex['Exercise Name']||'').toString().trim() === lastLogExerciseName);
+
+    // Start with the loggedEx and advance along the chain as long as the achieved reps >= that exercise's Max Target
+    let recommended = loggedEx || baseEx;
+    // Guard numeric parsing
+    const toNum = x => { const n = Number(x); return isNaN(n) ? 0 : n; };
+
+    // loop to possibly advance multiple progression steps
+    while (true) {
+        const curMaxTarget = toNum(recommended['Max Target']);
+        if (maxRepsAchieved >= curMaxTarget) {
+            const nextName = (recommended['Progression (Harder)'] || '').toString().trim();
+            if (!nextName) break;
+            const nextEx = masterDatabase.find(e => (e['Exercise Name']||'').toString().trim() === nextName);
+            if (!nextEx) break;
+            // advance
+            recommended = nextEx;
+            // continue loop to see if we should jump further
+            continue;
+        }
+        break;
+    }
+
+    // recommended is the exercise we should render
+    return recommended;
+}
+    
     // --- AI PROGRESSION & RENDERING ENGINE ---
     function triggerWorkoutLoad() {
         const selectedType = document.getElementById('workout-type').value;
@@ -250,58 +322,39 @@
             }
 
             // 2. Render MAIN EXERCISES
-            if (mainExercises.length > 0) {
-                exerciseList.insertAdjacentHTML('beforeend', '<div class="phase-header">⚡ Main Routine</div>');
-                mainExercises.forEach(baseEx => {
-                    let exerciseToRender = baseEx;
-                    let recText = "First time doing this! Establish a baseline.";
-
-                    let lastLog = null;
-                    for (let i = workoutLogs.length - 1; i >= 0; i--) {
-                        if (workoutLogs[i].Category === baseEx.Category) {
-                            lastLog = workoutLogs[i];
-                            break;
-                        }
-                    }
-
-                    if (lastLog) {
-                        const lastSets = [lastLog['Set 1'], lastLog['Set 2'], lastLog['Set 3'], lastLog['Set 4'], lastLog['Set 5']].map(Number).filter(n => !isNaN(n) && n > 0);
-                        const maxRepsAchieved = lastSets.length > 0 ? Math.max(...lastSets) : 0;
-                        
-                        if (maxRepsAchieved >= baseEx['Max Target']) {
-                            const progressionEx = masterDatabase.find(e => e['Exercise Name'] === baseEx['Progression (Harder)']);
-                            if (progressionEx) {
-                                exerciseToRender = progressionEx;
-                                recText = `🔥 Leveled Up! Try to hit the Min Target.`;
-                            }
-                        } else if (maxRepsAchieved > 0 && maxRepsAchieved < baseEx['Min Target']) {
-                            const regressionEx = masterDatabase.find(e => e['Exercise Name'] === baseEx['Regression (Easier)']);
-                            if (regressionEx) {
-                                exerciseToRender = regressionEx;
-                                recText = `📉 Regressed to build volume. Hit Max Target to go back up!`;
-                            }
-                        } else if (maxRepsAchieved > 0) {
-                            const increment = Number(baseEx['Progression Amount']) || 1; 
-                            const nextTarget = maxRepsAchieved + increment;
-                            const metric = baseEx['Metric Type'] ? baseEx['Metric Type'].toLowerCase() : 'reps';
-                            recText = `📈 Recommended: Try for ${nextTarget} ${metric} on your first set!`;
-                        }
-                    }
-
-                    createTrackingCard(exerciseToRender['Exercise Name'], exerciseToRender.Category, exerciseToRender.Equipment, exerciseToRender['Instructions / Cues'], exerciseToRender['Target Sets'], exerciseToRender['Min Target'], exerciseToRender['Max Target'] + ' ' + (exerciseToRender['Metric Type']||''), recText, true);
-                });
-            }
-
-            // 3. Render COOL-DOWNS
-            if (cooldowns.length > 0) {
-                exerciseList.insertAdjacentHTML('beforeend', '<div class="phase-header">❄️ Restoration Phase</div>');
-                cooldowns.forEach(ex => {
-                    createTrackingCard(ex['Exercise Name'], ex.Category, ex.Equipment, ex['Instructions / Cues'], ex['Target Sets'], ex['Min Target'], ex['Max Target'] + ' ' + (ex['Metric Type']||''), "", false);
-                });
+            mainExercises.forEach(baseEx => {
+        // determine recommendation/exercise to render using chain-aware helper
+        const exerciseToRender = getRecommendedExerciseFrom(baseEx);
+        // create friendly recText
+        let recText = "First time doing this! Establish a baseline.";
+        // get last log for this exact exercise (optional: reuse logic to fetch latest log for exerciseToRender)
+        // compute a short recommendation string if we have a recent log
+        let lastLog = null;
+        for (let i = workoutLogs.length - 1; i >= 0; i--) {
+            const logName = (workoutLogs[i]['Exercise Name'] || workoutLogs[i]['exerciseName'] || '').toString().trim();
+            if (logName && logName === (exerciseToRender['Exercise Name'] || '').toString().trim()) {
+                lastLog = workoutLogs[i];
+                break;
             }
         }
-    }
+        if (lastLog) {
+            const setKeys = ['Set 1','Set 2','Set 3','Set 4','Set 5','Set 6','Set 7','Set 8','Set 9','Set 10'];
+            const lastSets = setKeys.map(k => Number(lastLog[k])).filter(n => !isNaN(n) && n > 0);
+            const maxRepsAchieved = lastSets.length > 0 ? Math.max(...lastSets) : 0;
+            if (maxRepsAchieved >= (Number(baseEx['Max Target']) || 0) && (exerciseToRender['Exercise Name'] !== baseEx['Exercise Name'])) {
+                recText = `🔥 Leveled Up! Try ${exerciseToRender['Exercise Name']} (hit the Min Target).`;
+            } else if (maxRepsAchieved > 0 && maxRepsAchieved < (Number(baseEx['Min Target']) || 0)) {
+                recText = `📉 Regressed to build volume. Hit Max Target to go back up!`;
+            } else if (maxRepsAchieved > 0) {
+                const increment = Number(baseEx['Progression Amount']) || 1;
+                const nextTarget = maxRepsAchieved + increment;
+                const metric = baseEx['Metric Type'] ? baseEx['Metric Type'].toLowerCase() : 'reps';
+                recText = `📈 Recommended: Try for ${nextTarget} ${metric} on your first set!`;
+            }
+        }
 
+        createTrackingCard(exerciseToRender['Exercise Name'], exerciseToRender.Category, exerciseToRender.Equipment, exerciseToRender['Instructions / Cues'], exerciseToRender['Target Sets'], exerciseToRender['Min Target'], exerciseToRender['Max Target'] + ' ' + (exerciseToRender['Metric Type']||''), recText);
+    });
     // --- STANDARD BUILDER LOGIC ---
     const catSelect = document.getElementById('category-select');
     const exSelect = document.getElementById('exercise-select');

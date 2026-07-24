@@ -331,30 +331,33 @@ function getRecommendedExerciseFrom(baseEx) {
 
             // 2. Render MAIN EXERCISES
             mainExercises.forEach(baseEx => {
-        // determine recommendation/exercise to render using chain-aware helper
         const exerciseToRender = getRecommendedExerciseFrom(baseEx);
-        // create friendly recText
-        let recText = "First time doing this! Establish a baseline.";
-        // get last log for this exact exercise (optional: reuse logic to fetch latest log for exerciseToRender)
-        // compute a short recommendation string if we have a recent log
-        // Instantly grab the latest log from our cheat sheet
-        let lastLog = null;
         const renderName = (exerciseToRender['Exercise Name'] || '').toString().trim();
-        if (latestLogsCache[renderName]) {
-            lastLog = latestLogsCache[renderName].log;
+        const baseName = (baseEx['Exercise Name'] || '').toString().trim();
+        
+        let recText = "First time doing this! Establish a baseline.";
+
+        // Grab the latest log for the specific exercise we are rendering (if it exists)
+        let lastLogForRendered = latestLogsCache[renderName] ? latestLogsCache[renderName].log : null;
+
+        // Condition 1: We leveled up, but haven't actually logged this new exercise yet!
+        if (renderName !== baseName && !lastLogForRendered) {
+            recText = `🔥 Leveled Up! Try ${renderName} (hit the Min Target).`;
         }
-        if (lastLog) {
+        // Condition 2: We have logged this specific exercise before, let's analyze the performance.
+        else if (lastLogForRendered) {
             const setKeys = ['Set 1','Set 2','Set 3','Set 4','Set 5','Set 6','Set 7','Set 8','Set 9','Set 10'];
-            const lastSets = setKeys.map(k => Number(lastLog[k])).filter(n => !isNaN(n) && n > 0);
+            const lastSets = setKeys.map(k => Number(lastLogForRendered[k])).filter(n => !isNaN(n) && n > 0);
             const maxRepsAchieved = lastSets.length > 0 ? Math.max(...lastSets) : 0;
-            if (maxRepsAchieved >= (Number(baseEx['Max Target']) || 0) && (exerciseToRender['Exercise Name'] !== baseEx['Exercise Name'])) {
-                recText = `🔥 Leveled Up! Try ${exerciseToRender['Exercise Name']} (hit the Min Target).`;
-            } else if (maxRepsAchieved > 0 && maxRepsAchieved < (Number(baseEx['Min Target']) || 0)) {
+            
+            const minTarget = Number(exerciseToRender['Min Target']) || 0;
+
+            if (maxRepsAchieved > 0 && maxRepsAchieved < minTarget) {
                 recText = `📉 Regressed to build volume. Hit Max Target to go back up!`;
             } else if (maxRepsAchieved > 0) {
-                const increment = Number(baseEx['Progression Amount']) || 1;
+                const increment = Number(exerciseToRender['Progression Amount']) || 1;
                 const nextTarget = maxRepsAchieved + increment;
-                const metric = baseEx['Metric Type'] ? baseEx['Metric Type'].toLowerCase() : 'reps';
+                const metric = exerciseToRender['Metric Type'] ? exerciseToRender['Metric Type'].toLowerCase() : 'reps';
                 recText = `📈 Recommended: Try for ${nextTarget} ${metric} on your first set!`;
             }
         }

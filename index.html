@@ -283,25 +283,20 @@ function getRecommendedExerciseFrom(baseEx) {
     // find which exercise in chain was logged
     let loggedEx = chain.find(ex => (ex['Exercise Name']||'').toString().trim() === lastLogExerciseName);
 
-    // Start with the loggedEx and advance along the chain as long as the achieved reps >= that exercise's Max Target
+    // Start with the exercise you most recently logged (or the base if no logs exist)
     let recommended = loggedEx || baseEx;
-    // Guard numeric parsing
     const toNum = x => { const n = Number(x); return isNaN(n) ? 0 : n; };
+    const curMaxTarget = toNum(recommended['Max Target']);
 
-    // loop to possibly advance multiple progression steps
-    while (true) {
-        const curMaxTarget = toNum(recommended['Max Target']);
-        if (maxRepsAchieved >= curMaxTarget) {
-            const nextName = (recommended['Progression (Harder)'] || '').toString().trim();
-            if (!nextName) break;
+    // If we have a valid log, and you hit the Max Target, step up EXACTLY ONE level.
+    if (lastLog && maxRepsAchieved >= curMaxTarget) {
+        const nextName = (recommended['Progression (Harder)'] || '').toString().trim();
+        if (nextName) {
             const nextEx = masterDatabase.find(e => (e['Exercise Name']||'').toString().trim() === nextName);
-            if (!nextEx) break;
-            // advance
-            recommended = nextEx;
-            // continue loop to see if we should jump further
-            continue;
+            if (nextEx) {
+                recommended = nextEx; // Level up!
+            }
         }
-        break;
     }
 
     // recommended is the exercise we should render

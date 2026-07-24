@@ -366,6 +366,9 @@ function getRecommendedExerciseFrom(baseEx) {
 
         createTrackingCard(exerciseToRender['Exercise Name'], exerciseToRender.Category, exerciseToRender.Equipment, exerciseToRender['Instructions / Cues'], exerciseToRender['Target Sets'], exerciseToRender['Min Target'], exerciseToRender['Max Target'] + ' ' + (exerciseToRender['Metric Type']||''), recText);
     });
+ } 
+}
+            
     // --- STANDARD BUILDER LOGIC ---
     const catSelect = document.getElementById('category-select');
     const exSelect = document.getElementById('exercise-select');

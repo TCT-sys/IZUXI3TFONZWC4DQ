@@ -288,22 +288,41 @@ function getRecommendedExerciseFrom(baseEx) {
 
     // Start with the exercise you most recently logged (or the base if no logs exist)
     let recommended = loggedEx || baseEx;
+    let statusFlag = 'same'; // Keep track of if we moved up or down
+    
     const toNum = x => { const n = Number(x); return isNaN(n) ? 0 : n; };
     const curMaxTarget = toNum(recommended['Max Target']);
+    const curMinTarget = toNum(recommended['Min Target']); // NEW: Grab the minimum target
 
-    // If we have a valid log, and the AVERAGE hits the Max Target, step up EXACTLY ONE level.
-    if (lastLog && averageReps >= curMaxTarget) {
-        const nextName = (recommended['Progression (Harder)'] || '').toString().trim();
-        if (nextName) {
-            const nextEx = masterDatabase.find(e => (e['Exercise Name']||'').toString().trim() === nextName);
-            if (nextEx) {
-                recommended = nextEx; // Level up!
+    if (lastLog) {
+        // 1. If the AVERAGE hits the Max Target, step UP exactly one level.
+        if (averageReps >= curMaxTarget) {
+            const nextName = (recommended['Progression (Harder)'] || '').toString().trim();
+            if (nextName) {
+                const nextEx = masterDatabase.find(e => (e['Exercise Name']||'').toString().trim() === nextName);
+                if (nextEx) {
+                    recommended = nextEx;
+                    statusFlag = 'up';
+                }
+            }
+        }
+        // 2. NEW: If the AVERAGE is below the Min Target, step DOWN exactly one level.
+        else if (averageReps > 0 && averageReps < curMinTarget) {
+            const prevName = (recommended['Regression (Easier)'] || '').toString().trim();
+            if (prevName) {
+                const prevEx = masterDatabase.find(e => (e['Exercise Name']||'').toString().trim() === prevName);
+                if (prevEx) {
+                    recommended = prevEx;
+                    statusFlag = 'down';
+                }
             }
         }
     }
 
-    // recommended is the exercise we should render
-    return recommended;
+    // Clone the exercise safely and attach our status flag so the UI knows what happened
+    let finalRecommendation = Object.assign({}, recommended);
+    finalRecommendation._status = statusFlag;
+    return finalRecommendation;
 }
     
     // --- AI PROGRESSION & RENDERING ENGINE ---
@@ -332,7 +351,7 @@ function getRecommendedExerciseFrom(baseEx) {
                 });
             }
 
-            // 2. Render MAIN EXERCISES
+           // 2. Render MAIN EXERCISES
             if (mainExercises.length > 0) {
                 exerciseList.insertAdjacentHTML('beforeend', '<div class="phase-header">🏋️ Main Workout</div>');
             }
@@ -340,35 +359,32 @@ function getRecommendedExerciseFrom(baseEx) {
             mainExercises.forEach(baseEx => {
         const exerciseToRender = getRecommendedExerciseFrom(baseEx);
         const renderName = (exerciseToRender['Exercise Name'] || '').toString().trim();
-        const baseName = (baseEx['Exercise Name'] || '').toString().trim();
         
         let recText = "First time doing this! Establish a baseline.";
 
-        // Grab the latest log for the specific exercise we are rendering (if it exists)
-        let lastLogForRendered = latestLogsCache[renderName] ? latestLogsCache[renderName].log : null;
-
-        // Condition 1: We leveled up, but haven't actually logged this new exercise yet!
-        if (renderName !== baseName && !lastLogForRendered) {
+        // Use the new status flag we attached to generate the exact right message
+        if (exerciseToRender._status === 'up') {
             recText = `🔥 Leveled Up! Try ${renderName} (hit the Min Target).`;
-        }
-       // Condition 2: We have logged this specific exercise before, let's analyze the performance.
-        else if (lastLogForRendered) {
-            const setKeys = ['Set 1','Set 2','Set 3','Set 4','Set 5','Set 6','Set 7','Set 8','Set 9','Set 10'];
-            const lastSets = setKeys.map(k => Number(lastLogForRendered[k])).filter(n => !isNaN(n) && n > 0);
+        } 
+        else if (exerciseToRender._status === 'down') {
+            recText = `📉 Regressed to build volume. Hit Max Target to go back up!`;
+        } 
+        else {
+            // We stayed the same. Let's calculate the average from the last time we did THIS exact exercise.
+            let lastLogForRendered = latestLogsCache[renderName] ? latestLogsCache[renderName].log : null;
             
-            // NEW: Calculate the average of the sets and round to the nearest whole number
-            const averageReps = lastSets.length > 0 ? Math.round(lastSets.reduce((a, b) => a + b, 0) / lastSets.length) : 0;
-            
-            const minTarget = Number(exerciseToRender['Min Target']) || 0;
-
-            if (averageReps > 0 && averageReps < minTarget) {
-                recText = `📉 Regressed to build volume. Hit Max Target to go back up!`;
-            } else if (averageReps > 0) {
-                // The 'increment' acts as your "+1", pulling from your database or defaulting to 1
-                const increment = Number(exerciseToRender['Progression Amount']) || 1;
-                const nextTarget = averageReps + increment;
-                const metric = exerciseToRender['Metric Type'] ? exerciseToRender['Metric Type'].toLowerCase() : 'reps';
-                recText = `📈 Recommended: Try for ${nextTarget} ${metric} on your first set!`;
+            if (lastLogForRendered) {
+                const setKeys = ['Set 1','Set 2','Set 3','Set 4','Set 5','Set 6','Set 7','Set 8','Set 9','Set 10'];
+                const lastSets = setKeys.map(k => Number(lastLogForRendered[k])).filter(n => !isNaN(n) && n > 0);
+                
+                const averageReps = lastSets.length > 0 ? Math.round(lastSets.reduce((a, b) => a + b, 0) / lastSets.length) : 0;
+                
+                if (averageReps > 0) {
+                    const increment = Number(exerciseToRender['Progression Amount']) || 1;
+                    const nextTarget = averageReps + increment;
+                    const metric = exerciseToRender['Metric Type'] ? exerciseToRender['Metric Type'].toLowerCase() : 'reps';
+                    recText = `📈 Recommended: Try for ${nextTarget} ${metric} on your first set!`;
+                }
             }
         }
 

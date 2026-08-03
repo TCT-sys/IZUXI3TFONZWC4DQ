@@ -333,6 +333,10 @@ function getRecommendedExerciseFrom(baseEx) {
             }
 
             // 2. Render MAIN EXERCISES
+            if (mainExercises.length > 0) {
+                exerciseList.insertAdjacentHTML('beforeend', '<div class="phase-header">🏋️ Main Workout</div>');
+            }
+            
             mainExercises.forEach(baseEx => {
         const exerciseToRender = getRecommendedExerciseFrom(baseEx);
         const renderName = (exerciseToRender['Exercise Name'] || '').toString().trim();

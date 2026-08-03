@@ -210,9 +210,11 @@
             const workoutDropdown = document.getElementById('workout-type');
             workoutDropdown.value = getWorkoutForDate(currentDate);
             triggerWorkoutLoad(); 
-        } catch (error) {
-            statusEl.style.color = "var(--warning)";
-            statusEl.innerText = "Sync failed. Check connection.";
+        } catch (error) { 
+            statusEl.style.color = "var(--warning)"; 
+            // This will now print the exact JavaScript or Network error to your screen!
+            statusEl.innerText = "Error: " + error.message; 
+            console.error("Full error:", error);
         } finally {
             fetchBtn.disabled = false;
         }

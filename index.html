@@ -234,8 +234,7 @@
             iconEl.classList.add('open');
         }
     }
-
-    // Helper: find recommended exercise by following progression chain
+// Helper: find recommended exercise by following progression chain
 function getRecommendedExerciseFrom(baseEx) {
     if (!baseEx) return baseEx;
     // build progression chain (baseEx, next, next, ...)
@@ -270,7 +269,7 @@ function getRecommendedExerciseFrom(baseEx) {
     // If there's no log in the chain, return the base exercise (fresh start)
     if (!lastLog) return baseEx;
 
-    // compute max reps achieved from Set 1..Set 10 (tolerant parsing)
+    // compute reps achieved from Set 1..Set 10 (tolerant parsing)
     const setKeys = ['Set 1','Set 2','Set 3','Set 4','Set 5','Set 6','Set 7','Set 8','Set 9','Set 10'];
     const reps = [];
     for (const k of setKeys) {
@@ -278,7 +277,9 @@ function getRecommendedExerciseFrom(baseEx) {
         const n = Number(v);
         if (!isNaN(n) && n > 0) reps.push(n);
     }
-    const maxRepsAchieved = reps.length > 0 ? Math.max(...reps) : 0;
+    
+    // NEW: Calculate the average of the sets and round to the nearest whole number
+    const averageReps = reps.length > 0 ? Math.round(reps.reduce((a, b) => a + b, 0) / reps.length) : 0;
 
     // find which exercise in chain was logged
     let loggedEx = chain.find(ex => (ex['Exercise Name']||'').toString().trim() === lastLogExerciseName);
@@ -288,8 +289,8 @@ function getRecommendedExerciseFrom(baseEx) {
     const toNum = x => { const n = Number(x); return isNaN(n) ? 0 : n; };
     const curMaxTarget = toNum(recommended['Max Target']);
 
-    // If we have a valid log, and you hit the Max Target, step up EXACTLY ONE level.
-    if (lastLog && maxRepsAchieved >= curMaxTarget) {
+    // If we have a valid log, and the AVERAGE hits the Max Target, step up EXACTLY ONE level.
+    if (lastLog && averageReps >= curMaxTarget) {
         const nextName = (recommended['Progression (Harder)'] || '').toString().trim();
         if (nextName) {
             const nextEx = masterDatabase.find(e => (e['Exercise Name']||'').toString().trim() === nextName);
@@ -344,19 +345,22 @@ function getRecommendedExerciseFrom(baseEx) {
         if (renderName !== baseName && !lastLogForRendered) {
             recText = `🔥 Leveled Up! Try ${renderName} (hit the Min Target).`;
         }
-        // Condition 2: We have logged this specific exercise before, let's analyze the performance.
+       // Condition 2: We have logged this specific exercise before, let's analyze the performance.
         else if (lastLogForRendered) {
             const setKeys = ['Set 1','Set 2','Set 3','Set 4','Set 5','Set 6','Set 7','Set 8','Set 9','Set 10'];
             const lastSets = setKeys.map(k => Number(lastLogForRendered[k])).filter(n => !isNaN(n) && n > 0);
-            const maxRepsAchieved = lastSets.length > 0 ? Math.max(...lastSets) : 0;
+            
+            // NEW: Calculate the average of the sets and round to the nearest whole number
+            const averageReps = lastSets.length > 0 ? Math.round(lastSets.reduce((a, b) => a + b, 0) / lastSets.length) : 0;
             
             const minTarget = Number(exerciseToRender['Min Target']) || 0;
 
-            if (maxRepsAchieved > 0 && maxRepsAchieved < minTarget) {
+            if (averageReps > 0 && averageReps < minTarget) {
                 recText = `📉 Regressed to build volume. Hit Max Target to go back up!`;
-            } else if (maxRepsAchieved > 0) {
+            } else if (averageReps > 0) {
+                // The 'increment' acts as your "+1", pulling from your database or defaulting to 1
                 const increment = Number(exerciseToRender['Progression Amount']) || 1;
-                const nextTarget = maxRepsAchieved + increment;
+                const nextTarget = averageReps + increment;
                 const metric = exerciseToRender['Metric Type'] ? exerciseToRender['Metric Type'].toLowerCase() : 'reps';
                 recText = `📈 Recommended: Try for ${nextTarget} ${metric} on your first set!`;
             }
@@ -364,6 +368,16 @@ function getRecommendedExerciseFrom(baseEx) {
 
         createTrackingCard(exerciseToRender['Exercise Name'], exerciseToRender.Category, exerciseToRender.Equipment, exerciseToRender['Instructions / Cues'], exerciseToRender['Target Sets'], exerciseToRender['Min Target'], exerciseToRender['Max Target'] + ' ' + (exerciseToRender['Metric Type']||''), recText);
     });
+
+    // --- NEW: 3. Render COOLDOWNS ---
+    if (cooldowns.length > 0) {
+        exerciseList.insertAdjacentHTML('beforeend', '<div class="phase-header">❄️ Cooldown Phase</div>');
+        cooldowns.forEach(ex => {
+            // Note: The 'false' at the end tells the app not to generate input boxes for reps, keeping the UI clean just like the warm-ups.
+            createTrackingCard(ex['Exercise Name'], ex.Category, ex.Equipment, ex['Instructions / Cues'], ex['Target Sets'], ex['Min Target'], ex['Max Target'] + ' ' + (ex['Metric Type']||''), "", false);
+        });
+    }
+    // --------------------------------
  } 
 }
             
